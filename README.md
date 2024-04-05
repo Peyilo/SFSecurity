@@ -1,4 +1,6 @@
-#### SO库逆向 -- 菠萝包轻小说中的SFSecurity
+### SO库逆向 -- 菠萝包轻小说中的SFSecurity
+
+#### 逆向分析
 
 通过抓包分析APP的请求可知，每次请求都要在请求中加入一个特殊的请求头。
 
@@ -47,17 +49,32 @@ nonce=6E72CFB2-2DE1-4123-A4B1-8EF4D9414A62&timestamp=1712106953992
 
 在MD5加密算法过程中，会有个transform的过程。在so库文件中该函数的位置打上一个断点，并在断点处读取内存中的数据，转化为字符串，屏幕输出出来。
 
-屏幕输出了两次，输出结果如下：
+```java
+// 0xb4b4是MD5::Transform函数在so库文件中的地址
+debugger.addBreakPoint(module, 0xb4b4 + 1, (emulator1, address) -> {
+    System.out.println("Debugger:");
+    // 读取从内存地址0xbffff3b9L开始的64byte字节
+    byte[] bytes = backend.mem_read(0xbffff3b9L, 64);	
+    String s = new String(bytes);
+    System.out.println(s);
+    System.out.println(Arrays.toString(bytes));
+    return true;
+});
+```
+
+<img src="./pic/1.png"/>
+
+程序在断点处执行了两次，因此屏幕输出了两次，输出结果如下：
 
 ```
-(@  (@0���ӽ @ 13A3008B-A427-45A2-B54B-36082BC347B41712126046742aFN_Q29XHVmfV3m %@      #Eg�����ܺ�vT2�(@�^@  (@0���    �
+13080C7A-A2EE-44E5-8B9B-CAC3F4FF7DFD1712283793341aFN_Q29XHVmfV3m
 ```
 
 ```
-(@  (@0���ӽ @ YX�                                                            %@       -WId��%ׁ���a���(@�^@  (@0���    �
+YX�                                                           
 ```
 
-存在很多乱码，但是可以看到非乱码的字符存在一个规律
+存在部分乱码，但是可以看到非乱码的字符存在一个规律
 
 ```
 13A3008B-A427-45A2-B54B-36082BC347B41712126046742aFN_Q29XHVmfV3m
@@ -67,9 +84,23 @@ nonce=6E72CFB2-2DE1-4123-A4B1-8EF4D9414A62&timestamp=1712106953992
 
 显然，末尾的未知字符串就是MD5加密算法用到的盐值salt。
 
-使用salt="FN_Q29XHVmfV3m"来验证sign，发现并不匹配。又注意到，屏幕输出了两次，第二次输出时有段字符“YX”。推测MD5的transform过程中，使用的定长数组，由于字符串过长，分了两次进行transform。将“FN_Q29XHVmfV3m”和"YX"拼接起来作为盐值salt="FN_Q29XHVmfV3mYX"再进行验证。
+使用salt="FN_Q29XHVmfV3m"来验证sign，发现并不匹配。又注意到，屏幕输出了两次，第二次输出时有段字符“YX”。推测MD5的transform过程中，使用的定长为64的数组，由于字符串过长，分成了两次进行transform。将“FN_Q29XHVmfV3m”和"YX"拼接起来作为盐值salt="FN_Q29XHVmfV3mYX"再进行验证。
 
 验证成功。菠萝包轻小说的MD5加密算法所添加的盐值salt就是“FN_Q29XHVmfV3mYX”
+
+#### SFSecurity的生成方式
+
+```java
+protected String getSFSecurity() {
+    String nonce = UUID.randomUUID().toString();
+    String timestamp = System.currentTimeMillis() + "";
+    String sign = SecurityUtils.getMD5Str(nonce, timestamp, deviceToken, salt);
+    return "nonce=" + nonce + "&timestamp=" + timestamp + "&devicetoken=" + deviceToken
+        + "&sign=" + sign.toUpperCase();
+}
+```
+
+nonce为随机生成的UID字符串，timestamp是当前时间戳，devicetoken是设备唯一标识字符串。最后再对none、timestamp、devicetoken拼接起来得到的字符串使用MD5加密算法，所添加的盐值salt为“FN_Q29XHVmfV3mYX”，并将加密后的byte数组转化为字符串，并将该字符串全部转为大写，最后该字符串即sign的值。
 
 #### 注意
 
