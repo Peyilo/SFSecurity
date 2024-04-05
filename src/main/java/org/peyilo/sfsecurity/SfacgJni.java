@@ -80,7 +80,7 @@ public class SfacgJni extends AbstractJni {
         try {
             debugger.addBreakPoint(module, 0xb4b4 + 1, (emulator1, address) -> {
                 System.out.println("Debugger:");
-                byte[] bytes = backend.mem_read(0xbffff3a9L, 128);
+                byte[] bytes = backend.mem_read(0xbffff3b9L, 64);
                 String s = new String(bytes);
                 System.out.println(s);
                 System.out.println(Arrays.toString(bytes));
